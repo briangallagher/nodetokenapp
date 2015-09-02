@@ -2,7 +2,8 @@ var express = require('express');
 var bodyParser = require('body-parser');
 var mongoose = require('mongoose');
 var User = require('./models/User.js');
-var jwt = require('./services/jwt');
+// var jwt = require('./services/jwt'); // custom impl.
+var jwt = require('jwt-simple'); 
 
 var app = express(); 
 
@@ -57,12 +58,13 @@ app.get('/jobs', function (req, res) {
 	var token = req.headers.authorization.split(' ')[1];
 	var payload = jwt.decode(token, "shhh..");
 
-	if (payload.sub) {
+	if (!payload.sub) {
 		res.status(401).send({message: 'Authentication failed'});
 	}	
+	else {
+		res.json(jobs);
+	}
 
-
-	res.json(jobs);
 });
 
 mongoose.connect('mongodb://localhost/psjwt');
