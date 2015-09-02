@@ -4,10 +4,19 @@ var mongoose = require('mongoose');
 var User = require('./models/User.js');
 // var jwt = require('./services/jwt'); // custom impl.
 var jwt = require('jwt-simple'); 
+var passport = require('passport');
+var LocalStrategy = require('passport-local').Strategy;
 
 var app = express(); 
 
 app.use(bodyParser.json());
+app.use(passport.initialize());
+
+passport.serializeUser(function (user, done) {
+	console.log('Serializing user: ' + JSON.stringify(user));
+
+	done(null, user.id);
+});
 
 app.use(function (req,res,next) {
 	res.header('Access-Control-Allow-Origin', '*');
@@ -17,30 +26,82 @@ app.use(function (req,res,next) {
 	next();
 });
 
+var strategyOptions = {
+	'usernameField':'email'
+}
 
-app.post('/register', function (req,res) {
+var loginStrategy = new LocalStrategy(strategyOptions, function (email, password, done) {
+	
+	var searchUser = {
+		email: email
+	}
 
-	var user = req.body;
+	User.findOne(searchUser, function (err, user) {
+	
+		if (err) {
+			console.error('Error finding user: ' + err);
+			return done(err)
+		}
+		
+		if (!user) 
+			return done(null, false, {
+				message: 'Wrong email/password'
+			})
 
-	var newUser = new User.model({
-		email: user.email,
-		password: user.password
-	});
+		user.comparePasswords(password, function (err, isMatch) {
+			if (err) {
+				console.error('Error finding user: ' + err);
+				return done(err)
+			}
 
-	var payload = {
-		iss: req.hostname,
-		sub: newUser.id
-	};
+			if (isMatch)
+				done(null, user);
+			else 
+				return done(null, false, {
+					message: 'Wrong email/password'
+				})
+		});
+	});	
+});
 
-	var token = jwt.encode(payload, "shhh..");
+var registerStrategy = new LocalStrategy(strategyOptions, function (email, password, done) {
+	
+	var searchUser = {
+		email: email
+	}
 
-	newUser.save(function (err) {
-		res.status(200).send({
-			user: newUser.toJSON(),
-			token: token
-		})
-	});
+	User.findOne(searchUser, function (err, user) {
+	
+		if (err) {
+			console.error('Error finding user: ' + err);
+			return done(err)
+		}
+		
+		if (user) 
+			return done(null, false, {
+				message: 'Email already exists'
+			})
 
+		var newUser = new User({
+			email: email,
+			password: password
+		});
+
+		newUser.save(function (err) {
+			done(null, newUser);
+		});
+	});	
+
+})
+
+
+passport.use('local-register', registerStrategy);
+passport.use('local-login', loginStrategy);
+
+// Note: we can make this custom in order to pass through a custom err message 
+// see videos 49/50
+app.post('/register', passport.authenticate('local-register'), function (req,res) {
+	createToken(req.user, res);
 });
 
 var jobs = [
@@ -67,6 +128,26 @@ app.get('/jobs', function (req, res) {
 
 });
 
+// user gets set on req by passport if login is successfull
+// Callback only gets called if login works
+app.post('/login', passport.authenticate('local-login'), function (req, res) {
+	createToken (req.user, res);
+});
+
+
+function createToken (user, res) {
+	var payload = {
+		sub: user.id
+	};
+
+	var token = jwt.encode(payload, "shhh..");
+
+	res.status(200).send({
+		user: user.toJSON(),
+		token: token
+	})
+}
+
 mongoose.connect('mongodb://localhost/psjwt');
 
 var server = app.listen(3000, function () {
@@ -75,6 +156,11 @@ var server = app.listen(3000, function () {
 
 // Test the JWT token generator working
 // console.log(jwt.encode('hi', 'secret'));
+
+
+
+
+
 
 
 
