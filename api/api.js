@@ -6,6 +6,7 @@ var User = require('./models/User.js');
 var jwt = require('jwt-simple'); 
 var passport = require('passport');
 var LocalStrategy = require('passport-local').Strategy;
+var request = require('request');
 
 var app = express(); 
 
@@ -134,6 +135,65 @@ app.post('/login', passport.authenticate('local-login'), function (req, res) {
 	createToken (req.user, res);
 });
 
+
+// user gets set on req by passport if login is successfull
+// Callback only gets called if login works
+app.post('/auth/google', function (req, res) {
+
+	var authCode = req.body.code;
+	var url = 'https://accounts.google.com/o/oauth2/token';
+
+	request.post(url, { 
+		json: true, 
+		form : {
+			code: authCode,
+			client_id: req.body.clientId,
+			client_secret: 'ftpE35Mbh4tAzXDVqsgfl3Uf',
+			redirect_uri: req.body.redirectUri,
+			grant_type: 'authorization_code'
+		}
+	}, function (err, response, token) {
+		
+		console.log(token);
+
+		var accessToken = token.access_token;
+		var headers = {
+			Authorization: 'Bearer ' + accessToken 
+		}
+
+ 		var apiUrl = 'https://www.googleapis.com/plus/v1/people/me/openIdConnect';
+		
+		console.log('About to send request for profile.');
+		request.get({
+			url: apiUrl, 
+			headers: headers, 
+			json:true}, 
+		function (err, response, profile) {
+			if (err) {
+				console.err('Error getting profile ' + err);
+				return;
+			}
+
+			console.log('Retrieved user profile from google ' + JSON.stringify(profile));
+
+			User.findOne({googleId: profile.sub}, function (err, foundUser) {
+				if (foundUser) {
+					console.log('Found user profile');
+					return createToken(foundUser, res);
+				}
+
+				var newUser = new User();
+				newUser.googleId = profile.sub;
+				newUser.displayName = profile.name;
+				newUser.save(function (err) {
+					if (err) return next(err);
+					createToken(newUser, res); 
+				})
+			})
+		});
+	});
+
+});
 
 function createToken (user, res) {
 	var payload = {

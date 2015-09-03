@@ -3,7 +3,9 @@ var mongoose = require('mongoose');
 
 var UserSchema = new mongoose.Schema({
 	email: String,
-	password: String
+	password: String,
+	googleId: String,
+	displayName: String
 });
 
 UserSchema.methods.toJSON = function () {
